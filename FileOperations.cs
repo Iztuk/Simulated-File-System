@@ -39,7 +39,7 @@ namespace Simulated_File_System
                 // Check if the file already exists.
                 if (DoesFileExist(fileName))
                 {
-                    Console.WriteLine("File already Exists");
+                    Console.WriteLine("File already exists. (CreateFile)");
                     return;
                 }
 
@@ -88,7 +88,7 @@ namespace Simulated_File_System
                 int fileIndex = FindFileIndex(fileName);
                 if (fileIndex == -1)
                 {
-                    Console.WriteLine($"File '{fileName}' not found.");
+                    Console.WriteLine($"File '{fileName}' not found. (OpenFile)");
                     return -1;
                 }
 
@@ -157,9 +157,63 @@ namespace Simulated_File_System
             }
 
             // Close a file and update the open file tables.
-            public void CloseFile(string fileName)
+            public void CloseFile(string fileName, int processId)
             {
+                Console.WriteLine($"Running CloseFile function for file '{fileName}'");
+                
+                // Search for the file in the system-wide open file table.
+                int systemWideIndex = FindSystemWideOpenFileIndex(fileName);
+                Console.WriteLine($"This is the value of systemWideIndex: {systemWideIndex} of processId: {processId}");
+                if (systemWideIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName}' not found in system-wide open file table. (CloseFile)");
+                    return;
+                }
+                
+                // Find the file in the per-process open file table.
+                int perProcessIndex = FindPerProcessOpenFileIndex(fileName, processId);
+                Console.WriteLine($"This is the value of perProcessIndex: {perProcessIndex} of processId: {processId}");
+                if (perProcessIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName}' not found in per-process open file table.");
+                    return;
+                }
+                
+                // Update the system-wide open file table.
+                systemWideOpenFileTable[systemWideIndex] = null;
+                
+                // Update per-process open file table.
+                perProcessOpenFileTable[perProcessIndex] = null;
+                
+                Console.WriteLine($"File '{fileName}' closed successfully.");
+            }
 
+            private int FindSystemWideOpenFileIndex(string fileName)
+            {
+                for (int i = 0; i < systemWideOpenFileTable.Length; i++)
+                {
+                    if (systemWideOpenFileTable[i].FileName == fileName)
+                    {
+                        Console.WriteLine($"This is the index of {fileName} being returned in FindSystemWideOpenFileIndex: {i}");
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            private int FindPerProcessOpenFileIndex(string fileName, int processId)
+            {
+                int perProcessTableIndex = processId * maxOpenFiles;
+                for (int i = perProcessTableIndex; i < perProcessTableIndex; i++)
+                {
+                    if (perProcessOpenFileTable[i].FileName == fileName)
+                    {
+                        Console.WriteLine($"This is the index of {fileName} being returned in FindPerProcessOpenFileIndex: {i}");
+                        return i;
+                    }
+                }
+
+                return -1;
             }
 
             // Write data to a file.
