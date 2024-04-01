@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Threading.Tasks;
 
 using static Simulated_File_System.DataStructures;
+using DirectoryEntry = Simulated_File_System.DataStructures.DirectoryEntry;
 
 namespace Simulated_File_System
 {
@@ -12,56 +14,146 @@ namespace Simulated_File_System
     {
         public class FileSystem
         {
-            // Defines a system-wide open file table.
-            private static Dictionary<string, FileControlBlock> systemOpenFileTable = new Dictionary<string, FileControlBlock>();
+            private VolumeControlBlock vcb;
+            private DirectoryEntry[] directory;
+            private FileControlBlock[] fcbList;
+            private SystemWideOpenFileTable[] systemWideOpenFileTable;
+            private PerProcessOpenFileTable[] perProcessOpenFileTable;
+            private int maxOpenFiles;
 
-            // Defines a per-process open file table.
-            private Dictionary<string, FileControlBlock> perProcessFileTable = new Dictionary<string, FileControlBlock>();
-
-            // List to store directory entries.
-            public static List<DirectoryEntry> Directory = new List<DirectoryEntry>();
-
-            // Volume control block instance.
-            public static VolumeControlBlock volumeControlBlock = new VolumeControlBlock(512, 2048); // Define the amount of blocks and the block size.
+            // Constructor to initalize the volume control block, directory, and file control block.
+            public FileSystem(int maxOpenFiles, int maxProcesses)
+            {
+                vcb = new VolumeControlBlock();
+                directory = new DirectoryEntry[vcb.TotalBlocks];
+                fcbList = new FileControlBlock[vcb.TotalBlocks];
+                systemWideOpenFileTable = new SystemWideOpenFileTable[maxOpenFiles];
+                perProcessOpenFileTable = new PerProcessOpenFileTable[maxProcesses * maxOpenFiles];
+                this.maxOpenFiles = maxOpenFiles;
+            }
 
             // Create a file with specified size in blocks.
-            public static void CreateFile(string fileName, int fileSizeInBlocks)
+            public void CreateFile(string fileName, int fileSize)
             {
-                // Checks if a file with the same name already exists in the directory.
-                if (Directory.Exists(file => file.FileName == fileName))
+                Console.WriteLine($"Running CreateFile function for file '{fileName}'");
+                // Check if the file already exists.
+                if (DoesFileExist(fileName))
                 {
-                    Console.WriteLine("File with the same name already exists in the directory.");
+                    Console.WriteLine("File already Exists");
                     return;
                 }
 
-                // Create a new directory entry for the file.
-                DirectoryEntry newEntry = new DirectoryEntry
+                // Allocate a new file control block for the file.
+                int fcbPointer = vcb.NextAvailableBlock;
+                fcbList[fcbPointer] = new FileControlBlock
                 {
-                    FileName = fileName,
-                    FileSize = fileSizeInBlocks * volumeControlBlock.BlockSize,
-                    StartBlockNumber = volumeControlBlock.NextAvailableBlock // Placeholder for the actual block number.
+                    FileSize = fileSize,
+                    FirstDataBlockPointer = vcb.NextAvailableBlock
                 };
 
-                // Update the next available block.
-                volumeControlBlock.NextAvailableBlock += fileSizeInBlocks;
+                // Update the directory entry.
+                directory[vcb.NextAvailableBlock] = new DirectoryEntry
+                {
+                    FileName = fileName,
+                    StartBlockNumber = fcbList[fcbPointer].FirstDataBlockPointer,
+                    FileSize = fileSize
+                };
 
-                // Add the new entry to the directory.
-                Directory.Add(newEntry);
-                Console.WriteLine($"File '{fileName}' has been created with a size of '{fileSizeInBlocks}' blocks.");
+                vcb.FreeBlocks -= fileSize;
+                vcb.NextAvailableBlock += fileSize;
+
+                PrintFileSystemState();
+
+                Console.WriteLine($"File '{fileName}' created successfully!");
+            }
+
+            // Checks if the file name exists in the directory.
+            private bool DoesFileExist(string fileName)
+            {
+                foreach (var entry in directory)
+                {
+                    if (entry != null && entry.FileName == fileName)
+                    {
+                        return true;
+                    }
+                }
+                return false;
             }
 
             // Open a file and update open file tables.
-            public void OpenFile(string fileName)
+            public int OpenFile(string fileName, int processId)
             {
-                // Locate the file in the directory.
-                DirectoryEntry fileEntry = Directory.Find(file => file.FileName == fileName);
-                if (fileEntry == null)
+                Console.WriteLine($"Running OpenFile function for file '{fileName}'");
+                // Search for the file in the directory.
+                int fileIndex = FindFileIndex(fileName);
+                if (fileIndex == -1)
                 {
-                    Console.WriteLine("File not found.");
-                    return;
+                    Console.WriteLine($"File '{fileName}' not found.");
+                    return -1;
                 }
 
-                // Create a new instance of the per process file control block.
+                // Update system-wide open file table.
+                int systemWideIndex = AddToSystemWideOpenFileTable(fileName, fileIndex);
+
+                // Update per-process open file table.
+                int perProcessHandle = AddToPerProcessOpenFileTable(fileName, fileIndex, processId);
+
+                // Return the per-process file handle.
+                return perProcessHandle;
+            }
+
+            // Searches for the file in the directory and returns it's index.
+            private int FindFileIndex(string fileName)
+            {
+                for (int i = 0; i < directory.Length; i++)
+                {
+                    if (directory[i] != null && directory[i].FileName == fileName)
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            }
+
+            private int AddToSystemWideOpenFileTable(string fileName, int fileIndex)
+            {
+                Console.WriteLine($"Running AddToSystemWideOpenFileTable function for file '{fileName}'");
+                for (int i = 0; i < systemWideOpenFileTable.Length; i++)
+                {
+                    if (systemWideOpenFileTable[i] == null)
+                    {
+                        systemWideOpenFileTable[i] = new SystemWideOpenFileTable()
+                        {
+                            FileName = fileName,
+                            FCBPointer = directory[fileIndex].StartBlockNumber
+                        };
+                        return i; // Returns the index in system-wide open file table.
+                    }
+                }
+                Console.WriteLine("System-wide open file table is full.");
+                return -1;
+            }
+
+            private int AddToPerProcessOpenFileTable(string fileName, int fileIndex, int processId)
+            {
+                Console.WriteLine($"Running AddToPerProcessOpenFileTable function for file '{fileName}' and process {processId}");
+                int perProcessTableIndex = processId * this.maxOpenFiles; // Start index of per-process table for the given process.
+
+                for (int i = perProcessTableIndex; i < perProcessTableIndex; i++)
+                {
+                    if (perProcessOpenFileTable[i] == null)
+                    {
+                        perProcessOpenFileTable[i] = new PerProcessOpenFileTable()
+                        {
+                            FileName = fileName,
+                            Handle = i - perProcessTableIndex // Use the index as the handle.
+                        };
+                        return i - perProcessTableIndex; // Return handle.
+                    }
+                }
+                Console.WriteLine($"Per-process open file table for process {processId} is full");
+                return -1;
             }
 
             // Close a file and update the open file tables.
@@ -88,6 +180,33 @@ namespace Simulated_File_System
 
             }
 
+            private void PrintFileSystemState()
+            {
+                Console.WriteLine("\nCurrent State of File System:");
+                Console.WriteLine("Volume Control Block (VCB):");
+                Console.WriteLine($"Total Blocks: {vcb.TotalBlocks}");
+                Console.WriteLine($"Block Size: {vcb.BlockSize}");
+                Console.WriteLine($"Free Blocks: {vcb.FreeBlocks}");
+                Console.WriteLine($"Next Available Block: {vcb.NextAvailableBlock}");
+
+                Console.WriteLine("\nDirectory:");
+                for (int i = 0; i < directory.Length; i++)
+                {
+                    if (directory[i] != null)
+                    {
+                        Console.WriteLine($"Index: {i}, FileName: {directory[i].FileName}, StartBlockNumber: {directory[i].StartBlockNumber}, FileSize: {directory[i].FileSize}");
+                    }
+                }
+
+                Console.WriteLine("\nFile Control Blocks (FCB):");
+                for (int i = 0; i < fcbList.Length; i++)
+                {
+                    if (fcbList[i] != null)
+                    {
+                        Console.WriteLine($"Index: {i}, FileSize: {fcbList[i].FileSize}, FirstDataBlockPointer: {fcbList[i].FirstDataBlockPointer}");
+                    }
+                }
+            }
         }
     }
 }

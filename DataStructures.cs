@@ -10,24 +10,23 @@ namespace Simulated_File_System
     {
         public class VolumeControlBlock
         {
-            public int NumberOfBlocks { get; set; }
-            public int BlockSize { get; set; }
-            public int FreeBlockCount { get; set; }
-            public bool[] FreeBlockBitMap { get; set; }
+            public int TotalBlocks = 512;
+            public int BlockSize = 2048;
+            public int FreeBlocks { get; set; }
             public int NextAvailableBlock { get; set; }
+            public bool[] FreeBlockBitMap { get; set; }
 
-            public VolumeControlBlock(int numberOfBlocks, int blockSize)
+            // Constructor
+            public VolumeControlBlock()
             {
-                NumberOfBlocks = numberOfBlocks;
-                BlockSize = blockSize;
-                FreeBlockCount = numberOfBlocks - 1;
-                FreeBlockBitMap = new bool[NumberOfBlocks];
-                NextAvailableBlock = 1;
-
-                for (int i = 0; i < numberOfBlocks; i++)
+                FreeBlockBitMap = new bool[TotalBlocks];
+                for (int i = 0; i < TotalBlocks; i++)
                 {
-                    FreeBlockBitMap[i] = (i != 0); // This marks the free blocks.
+                    FreeBlockBitMap[i] = true; // Sets all the initial entries as true. (Simulates free space on the volume control block)
                 }
+
+                FreeBlocks = TotalBlocks;
+                NextAvailableBlock = 0;
             }
         }
 
@@ -38,18 +37,22 @@ namespace Simulated_File_System
             public int FileSize { get; set; }
         }
 
-        public class SystemWideFileControlBlock
+        public class FileControlBlock
+        {
+            public int FileSize { get; set; }
+            public int FirstDataBlockPointer { get; set; }
+        }
+
+        public class SystemWideOpenFileTable
         {
             public string FileName { get; set; }
-            public int FileSize { get; set; }
-            public int FirstDataBlockPointer { get; set; }
+            public int FCBPointer { get; set; }
         }
 
-        public class PerProcessFileControlBlock
+        public class PerProcessOpenFileTable
         {
-            public int FileSize { get; set; }
-            public int FirstDataBlockPointer { get; set; }
+            public string FileName { get; set; }
+            public int Handle { get; set; }
         }
-
     }
 }
