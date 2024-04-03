@@ -34,7 +34,9 @@ namespace Simulated_File_System
         {
             public string FileName { get; set; }
             public int StartBlockNumber { get; set; }
-            public int FileSize { get; set; }
+            public int FileSizeInBlocks { get; set; }
+            public int FileSizeInBytes { get; set; }
+            public byte[] FileData { get; set; }
         }
 
         public class FileControlBlock

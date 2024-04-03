@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Text;
@@ -33,9 +34,9 @@ namespace Simulated_File_System
             }
 
             // Create a file with specified size in blocks.
-            public void CreateFile(string fileName, int fileSize)
+            public void CreateFile(string fileName, int fileSizeInBytes, int processId)
             {
-                Console.WriteLine($"Running CreateFile function for file '{fileName}'");
+                Console.WriteLine($"Process {processId} is running CreateFile function for file '{fileName}'");
                 // Check if the file already exists.
                 if (DoesFileExist(fileName))
                 {
@@ -43,11 +44,14 @@ namespace Simulated_File_System
                     return;
                 }
 
+                // Calculate the number of blocks the file will require.
+                int fileSizeInBlocks = (fileSizeInBytes / vcb.BlockSize) + 1;
+
                 // Allocate a new file control block for the file.
                 int fcbPointer = vcb.NextAvailableBlock;
                 fcbList[fcbPointer] = new FileControlBlock
                 {
-                    FileSize = fileSize,
+                    FileSize = fileSizeInBlocks,
                     FirstDataBlockPointer = vcb.NextAvailableBlock
                 };
 
@@ -56,15 +60,17 @@ namespace Simulated_File_System
                 {
                     FileName = fileName,
                     StartBlockNumber = fcbList[fcbPointer].FirstDataBlockPointer,
-                    FileSize = fileSize
+                    FileSizeInBlocks = fileSizeInBlocks,
+                    FileSizeInBytes = fileSizeInBytes,
+                    FileData = new byte[fileSizeInBytes * vcb.BlockSize]
                 };
 
-                vcb.FreeBlocks -= fileSize;
-                vcb.NextAvailableBlock += fileSize;
+                vcb.FreeBlocks -= fileSizeInBlocks;
+                vcb.NextAvailableBlock += fileSizeInBlocks;
 
-                PrintFileSystemState();
+                Console.WriteLine($"File '{fileName}' created successfully!\n");
 
-                Console.WriteLine($"File '{fileName}' created successfully!");
+                OpenFile(fileName, processId);
             }
 
             // Checks if the file name exists in the directory.
@@ -83,7 +89,7 @@ namespace Simulated_File_System
             // Open a file and update open file tables.
             public int OpenFile(string fileName, int processId)
             {
-                Console.WriteLine($"Running OpenFile function for file '{fileName}'");
+                Console.WriteLine($"Process {processId} is running OpenFile function for file '{fileName}'.");
                 // Search for the file in the directory.
                 int fileIndex = FindFileIndex(fileName);
                 if (fileIndex == -1)
@@ -98,6 +104,7 @@ namespace Simulated_File_System
                 // Update per-process open file table.
                 int perProcessHandle = AddToPerProcessOpenFileTable(fileName, fileIndex, processId);
 
+                Console.WriteLine($"{fileName} has been opened by process {processId}.\n");
                 // Return the per-process file handle.
                 return perProcessHandle;
             }
@@ -116,9 +123,9 @@ namespace Simulated_File_System
                 return -1;
             }
 
+            // Adds the file to the system wide open file table.
             private int AddToSystemWideOpenFileTable(string fileName, int fileIndex)
             {
-                Console.WriteLine($"Running AddToSystemWideOpenFileTable function for file '{fileName}'");
                 for (int i = 0; i < systemWideOpenFileTable.Length; i++)
                 {
                     if (systemWideOpenFileTable[i] == null)
@@ -131,16 +138,16 @@ namespace Simulated_File_System
                         return i; // Returns the index in system-wide open file table.
                     }
                 }
-                Console.WriteLine("System-wide open file table is full.");
+                Console.WriteLine("System-wide open file table is full.\n");
                 return -1;
             }
 
+            // Adds the file to the per process open file table.
             private int AddToPerProcessOpenFileTable(string fileName, int fileIndex, int processId)
             {
-                Console.WriteLine($"Running AddToPerProcessOpenFileTable function for file '{fileName}' and process {processId}");
-                int perProcessTableIndex = processId * this.maxOpenFiles; // Start index of per-process table for the given process.
+                int perProcessTableIndex = (processId - 1) * this.maxOpenFiles; // Start index of per-process table for the given process.
 
-                for (int i = perProcessTableIndex; i < perProcessTableIndex; i++)
+                for (int i = perProcessTableIndex; i < perProcessOpenFileTable.Length; i++)
                 {
                     if (perProcessOpenFileTable[i] == null)
                     {
@@ -152,18 +159,17 @@ namespace Simulated_File_System
                         return i - perProcessTableIndex; // Return handle.
                     }
                 }
-                Console.WriteLine($"Per-process open file table for process {processId} is full");
+                Console.WriteLine($"Per-process open file table for process {processId} is full.\n");
                 return -1;
             }
 
             // Close a file and update the open file tables.
             public void CloseFile(string fileName, int processId)
             {
-                Console.WriteLine($"Running CloseFile function for file '{fileName}'");
+                Console.WriteLine($"Process {processId} is running CloseFile function for file '{fileName}'");
                 
                 // Search for the file in the system-wide open file table.
                 int systemWideIndex = FindSystemWideOpenFileIndex(fileName);
-                Console.WriteLine($"This is the value of systemWideIndex: {systemWideIndex} of processId: {processId}");
                 if (systemWideIndex == -1)
                 {
                     Console.WriteLine($"File '{fileName}' not found in system-wide open file table. (CloseFile)");
@@ -172,7 +178,6 @@ namespace Simulated_File_System
                 
                 // Find the file in the per-process open file table.
                 int perProcessIndex = FindPerProcessOpenFileIndex(fileName, processId);
-                Console.WriteLine($"This is the value of perProcessIndex: {perProcessIndex} of processId: {processId}");
                 if (perProcessIndex == -1)
                 {
                     Console.WriteLine($"File '{fileName}' not found in per-process open file table.");
@@ -185,30 +190,31 @@ namespace Simulated_File_System
                 // Update per-process open file table.
                 perProcessOpenFileTable[perProcessIndex] = null;
                 
-                Console.WriteLine($"File '{fileName}' closed successfully.");
+                Console.WriteLine($"File '{fileName}' closed successfully.\n");
             }
 
+            // Searches the index of the file in the system wide open file table.
             private int FindSystemWideOpenFileIndex(string fileName)
             {
                 for (int i = 0; i < systemWideOpenFileTable.Length; i++)
                 {
-                    if (systemWideOpenFileTable[i].FileName == fileName)
+                    if (systemWideOpenFileTable[i] != null && systemWideOpenFileTable[i].FileName == fileName)
                     {
-                        Console.WriteLine($"This is the index of {fileName} being returned in FindSystemWideOpenFileIndex: {i}");
                         return i;
                     }
                 }
                 return -1;
             }
 
+            // Searches the index of the file in the per process open file table.
             private int FindPerProcessOpenFileIndex(string fileName, int processId)
             {
-                int perProcessTableIndex = processId * maxOpenFiles;
-                for (int i = perProcessTableIndex; i < perProcessTableIndex; i++)
+                int perProcessTableIndex = (processId - 1) * maxOpenFiles;
+
+                for (int i = perProcessTableIndex; i < perProcessOpenFileTable.Length; i++)
                 {
-                    if (perProcessOpenFileTable[i].FileName == fileName)
+                    if (perProcessOpenFileTable[i] != null && perProcessOpenFileTable[i].FileName == fileName)
                     {
-                        Console.WriteLine($"This is the index of {fileName} being returned in FindPerProcessOpenFileIndex: {i}");
                         return i;
                     }
                 }
@@ -216,10 +222,90 @@ namespace Simulated_File_System
                 return -1;
             }
 
-            // Write data to a file.
-            public void WriteFile(string fileName, byte[] data)
+            // Read the data from a file.
+            public void ReadFile(string fileName, int processId)
             {
+                Console.WriteLine($"Process {processId} is running ReadFile function for file '{fileName}'");
 
+                // Searches for the file in the directory.
+                int fileIndex = FindFileIndex(fileName);
+                if (fileIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName}' not found.");
+                    return;
+                }
+
+                // Checks if the file is open in the system wide open file table.
+                int systemWideIndex = FindSystemWideOpenFileIndex(fileName);
+                if (systemWideIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName} cannot be read. (Not open)'");
+                    return;
+                }
+
+                // Access the directory entry for the file.
+                DirectoryEntry fileEntry = directory[fileIndex];
+
+                // Check if the file has data.
+                if (fileEntry.FileData == null || fileEntry.FileData.Length == 0)
+                {
+                    Console.WriteLine($"File '{fileName}' is empty.");
+                    return;
+                }
+
+                // Display the data from the file.
+                Console.WriteLine($"File data for '{fileName}':");
+                Console.WriteLine(Encoding.UTF8.GetString(fileEntry.FileData));
+                Console.WriteLine();
+;           }
+
+            // Write data to a file.
+            public void WriteFile(string fileName, int processId, byte[] data)
+            {
+                Console.WriteLine($"Process {processId} is running WriteFile function for file '{fileName}'");
+
+                // Find the file in the directory.
+                int fileIndex = FindFileIndex(fileName);
+                if (fileIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName}' not found.");
+                    return;
+                }
+
+                // Check if the file is open by the specified process.
+                int perProcessIndex = FindPerProcessOpenFileIndex(fileName, processId);
+                if (perProcessIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName}' not found in per-process open file table.");
+                    return;
+                }
+
+                // Access the directory entry for the file.
+                DirectoryEntry fileEntry = directory[fileIndex];
+
+                // Append the data to the file's content.
+                byte[] currentData = fileEntry.FileData;
+                int currentDataLength = currentData != null ? currentData.Length : 0;
+
+                byte[] newData = new byte[currentDataLength + data.Length];
+                if (currentData != null )
+                {
+                    for (int i = 0; i < currentDataLength; i++)
+                    {
+                        newData[i] = currentData[i];
+                    }
+                }
+
+                for (int i = 0; i < data.Length; i++)
+                {
+                    newData[currentDataLength + i] = data[i];
+                }
+
+                // Update the file's size and data in the directory entry.
+                fileEntry.FileSizeInBytes += data.Length;
+                fileEntry.FileData = newData;
+
+                Console.WriteLine($"Data written to file '{fileName}' successfully.\n");
             }
 
             // Display all files in the directory.
@@ -248,7 +334,7 @@ namespace Simulated_File_System
                 {
                     if (directory[i] != null)
                     {
-                        Console.WriteLine($"Index: {i}, FileName: {directory[i].FileName}, StartBlockNumber: {directory[i].StartBlockNumber}, FileSize: {directory[i].FileSize}");
+                        // Console.WriteLine($"Index: {i}, FileName: {directory[i].FileName}, StartBlockNumber: {directory[i].StartBlockNumber}, FileSize: {directory[i].FileSize}");
                     }
                 }
 
@@ -258,6 +344,24 @@ namespace Simulated_File_System
                     if (fcbList[i] != null)
                     {
                         Console.WriteLine($"Index: {i}, FileSize: {fcbList[i].FileSize}, FirstDataBlockPointer: {fcbList[i].FirstDataBlockPointer}");
+                    }
+                }
+
+                Console.WriteLine("\nSystem-Wide Open File Table:");
+                for (int i = 0; i < systemWideOpenFileTable.Length; i++)
+                {
+                    if (systemWideOpenFileTable[i] != null)
+                    {
+                        Console.WriteLine($"Index: {i}, FileName: {systemWideOpenFileTable[i].FileName}, FCBPointer: {systemWideOpenFileTable[i].FCBPointer}");
+                    }
+                }
+
+                Console.WriteLine("\nPer-Process Open File Table:");
+                for (int i = 0; i < perProcessOpenFileTable.Length; i++)
+                {
+                    if (perProcessOpenFileTable[i] != null)
+                    {
+                        Console.WriteLine($"Index: {i}, FileName: {perProcessOpenFileTable[i].FileName}, Handle: {perProcessOpenFileTable[i].Handle}");
                     }
                 }
             }
