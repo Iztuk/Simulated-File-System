@@ -89,6 +89,8 @@
                 Console.WriteLine("Unexpected process Id.");
             }
 
+            fileSystem.DisplayVCBBitMap();
+
             Console.WriteLine($"Thread {processId} completed.\n");
         }
     }

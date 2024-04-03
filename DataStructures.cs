@@ -13,7 +13,6 @@ namespace Simulated_File_System
             public int TotalBlocks = 512;
             public int BlockSize = 2048;
             public int FreeBlocks { get; set; }
-            public int NextAvailableBlock { get; set; }
             public bool[] FreeBlockBitMap { get; set; }
 
             // Constructor

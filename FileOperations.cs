@@ -37,6 +37,7 @@ namespace Simulated_File_System
             public void CreateFile(string fileName, int fileSizeInBytes, int processId)
             {
                 Console.WriteLine($"Process {processId} is running CreateFile function for file '{fileName}'");
+
                 // Check if the file already exists.
                 if (DoesFileExist(fileName))
                 {
@@ -47,30 +48,88 @@ namespace Simulated_File_System
                 // Calculate the number of blocks the file will require.
                 int fileSizeInBlocks = (fileSizeInBytes / vcb.BlockSize) + 1;
 
-                // Allocate a new file control block for the file.
-                int fcbPointer = vcb.NextAvailableBlock;
-                fcbList[fcbPointer] = new FileControlBlock
+                // Find the starting index of consecutive free blocks in the bitmap.
+                int startBlockIndex = FindConsecutiveFreeBlocks(fileSizeInBlocks);
+
+                // If enough consecutive free blocks are found, or if there are enough free blocks starting from index 0, allocate them.
+                if (startBlockIndex != -1 || vcb.FreeBlocks >= fileSizeInBlocks)
                 {
-                    FileSize = fileSizeInBlocks,
-                    FirstDataBlockPointer = vcb.NextAvailableBlock
-                };
+                    // Allocate the consecutive blocks or from the beginning of the bitmap.
+                    if (startBlockIndex != -1)
+                    {
+                        for (int i = startBlockIndex; i < startBlockIndex + fileSizeInBlocks; i++)
+                        {
+                            vcb.FreeBlockBitMap[i] = false; // Mark block as allocated
+                        } n
+                    }
+                    else
+                    {
+                        for (int i = 0; i < fileSizeInBlocks; i++)
+                        {
+                            vcb.FreeBlockBitMap[i] = false; // Mark block as allocated
+                        }
+                        startBlockIndex = 0;
+                    }
 
-                // Update the directory entry.
-                directory[vcb.NextAvailableBlock] = new DirectoryEntry
+                    // Allocate a new file control block for the file.
+                    int fcbPointer = startBlockIndex;
+                    fcbList[fcbPointer] = new FileControlBlock
+                    {
+                        FileSize = fileSizeInBlocks,
+                        FirstDataBlockPointer = fcbPointer
+                    };
+
+                    // Update the directory entry.
+                    directory[fcbPointer] = new DirectoryEntry
+                    {
+                        FileName = fileName,
+                        StartBlockNumber = fcbPointer,
+                        FileSizeInBlocks = fileSizeInBlocks,
+                        FileSizeInBytes = fileSizeInBytes,
+                        FileData = new byte[fileSizeInBytes * vcb.BlockSize]
+                    };
+
+                    // Update the VCB with the number of free blocks.
+                    vcb.FreeBlocks -= fileSizeInBlocks;
+
+                    Console.WriteLine($"File '{fileName}' created successfully!\n");
+
+                    OpenFile(fileName, processId);
+                }
+                else
                 {
-                    FileName = fileName,
-                    StartBlockNumber = fcbList[fcbPointer].FirstDataBlockPointer,
-                    FileSizeInBlocks = fileSizeInBlocks,
-                    FileSizeInBytes = fileSizeInBytes,
-                    FileData = new byte[fileSizeInBytes * vcb.BlockSize]
-                };
+                    Console.WriteLine($"Not enough consecutive free blocks to create file '{fileName}' with size {fileSizeInBytes} bytes.");
+                }
+            }
 
-                vcb.FreeBlocks -= fileSizeInBlocks;
-                vcb.NextAvailableBlock += fileSizeInBlocks;
+            private int FindConsecutiveFreeBlocks(int fileSizeInBlocks)
+            {
+                int startBlockIndex = -1;
+                int consecutiveCount = 0;
 
-                Console.WriteLine($"File '{fileName}' created successfully!\n");
+                for (int i = 0; i < vcb.TotalBlocks; i++)
+                {
+                    if (vcb.FreeBlockBitMap[i])
+                    {
+                        if (startBlockIndex == -1)
+                        {
+                            startBlockIndex = i;
+                        }
+                        consecutiveCount++;
+                    }
+                    else
+                    {
+                        startBlockIndex = -1;
+                        consecutiveCount = 0;
+                    }
 
-                OpenFile(fileName, processId);
+                    if (consecutiveCount >= fileSizeInBlocks)
+                    {
+                        break;
+                    }
+                }
+
+                return startBlockIndex;
             }
 
             // Checks if the file name exists in the directory.
@@ -315,53 +374,38 @@ namespace Simulated_File_System
             }
 
             // Delete a file from the directory.
-            public void DeleteFile(string fileName)
+            public void DeleteFile(string fileName, int processId)
             {
+                Console.WriteLine($"Process {processId} is running WriteFile function for file '{fileName}'");
+
+                // Check if the file is open in the system-wide open file table and close it.
+                int systemWideIndex = FindSystemWideOpenFileIndex(fileName);
+                if (systemWideIndex != -1)
+                {
+                    CloseFile(fileName, processId);
+                }
+
+                // Find the file in the directory.
+                int fileIndex = FindFileIndex(fileName);
+                if (fileIndex == -1)
+                {
+                    Console.WriteLine($"File '{fileName}' not found.");
+                    return;
+                }
+
+                // Free up the blocks occupied by the file in the volume control block.
 
             }
 
-            private void PrintFileSystemState()
+            public void DisplayVCBBitMap()
             {
-                Console.WriteLine("\nCurrent State of File System:");
-                Console.WriteLine("Volume Control Block (VCB):");
-                Console.WriteLine($"Total Blocks: {vcb.TotalBlocks}");
-                Console.WriteLine($"Block Size: {vcb.BlockSize}");
-                Console.WriteLine($"Free Blocks: {vcb.FreeBlocks}");
-                Console.WriteLine($"Next Available Block: {vcb.NextAvailableBlock}");
-
-                Console.WriteLine("\nDirectory:");
-                for (int i = 0; i < directory.Length; i++)
+                Console.WriteLine("Volume Control Block Free Block Bitmap:");
+                for (int i = 0; i < vcb.TotalBlocks; i++)
                 {
-                    if (directory[i] != null)
+                    Console.Write(vcb.FreeBlockBitMap[i] ? "1" : "0");
+                    if ((i + 1) % 50 == 0)
                     {
-                        // Console.WriteLine($"Index: {i}, FileName: {directory[i].FileName}, StartBlockNumber: {directory[i].StartBlockNumber}, FileSize: {directory[i].FileSize}");
-                    }
-                }
-
-                Console.WriteLine("\nFile Control Blocks (FCB):");
-                for (int i = 0; i < fcbList.Length; i++)
-                {
-                    if (fcbList[i] != null)
-                    {
-                        Console.WriteLine($"Index: {i}, FileSize: {fcbList[i].FileSize}, FirstDataBlockPointer: {fcbList[i].FirstDataBlockPointer}");
-                    }
-                }
-
-                Console.WriteLine("\nSystem-Wide Open File Table:");
-                for (int i = 0; i < systemWideOpenFileTable.Length; i++)
-                {
-                    if (systemWideOpenFileTable[i] != null)
-                    {
-                        Console.WriteLine($"Index: {i}, FileName: {systemWideOpenFileTable[i].FileName}, FCBPointer: {systemWideOpenFileTable[i].FCBPointer}");
-                    }
-                }
-
-                Console.WriteLine("\nPer-Process Open File Table:");
-                for (int i = 0; i < perProcessOpenFileTable.Length; i++)
-                {
-                    if (perProcessOpenFileTable[i] != null)
-                    {
-                        Console.WriteLine($"Index: {i}, FileName: {perProcessOpenFileTable[i].FileName}, Handle: {perProcessOpenFileTable[i].Handle}");
+                        Console.WriteLine(); // New line after every 10 bits for better readability
                     }
                 }
             }
