@@ -25,7 +25,6 @@ namespace Simulated_File_System
                 }
 
                 FreeBlocks = TotalBlocks;
-                NextAvailableBlock = 0;
             }
         }
 

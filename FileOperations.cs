@@ -60,7 +60,7 @@ namespace Simulated_File_System
                         for (int i = startBlockIndex; i < startBlockIndex + fileSizeInBlocks; i++)
                         {
                             vcb.FreeBlockBitMap[i] = false; // Mark block as allocated
-                        } n
+                        }
                     }
                     else
                     {
@@ -370,7 +370,14 @@ namespace Simulated_File_System
             // Display all files in the directory.
             public void ListFiles()
             {
-
+                Console.WriteLine("\nDirectory:");
+                for (int i = 0; i < directory.Length; i++)
+                {
+                    if (directory[i] != null)
+                    {
+                        Console.WriteLine($"Index: {i}, FileName: {directory[i].FileName}, StartBlockNumber: {directory[i].StartBlockNumber}, FileSize: {directory[i].FileSizeInBytes} bytes");
+                    }
+                }
             }
 
             // Delete a file from the directory.
@@ -394,7 +401,20 @@ namespace Simulated_File_System
                 }
 
                 // Free up the blocks occupied by the file in the volume control block.
-
+                int startBlockNumber = directory[fileIndex].StartBlockNumber;
+                int fileSizeInBlocks = directory[fileIndex].FileSizeInBlocks;
+                for (int i = startBlockNumber; i < startBlockNumber + fileSizeInBlocks; i++)
+                {
+                    vcb.FreeBlocks++;
+                    // Reset the corresponding file control block and directory entry.
+                    fcbList[i] = null;
+                    directory[i] = null;
+                    
+                    // Updates the free block bitmap
+                    vcb.FreeBlockBitMap[i] = true;
+                }
+                
+                Console.WriteLine($"File '{fileName}' deleted successfully.\n");
             }
 
             public void DisplayVCBBitMap()

@@ -56,6 +56,8 @@
 
             if (processId == 1)
             {
+                fileSystem.ListFiles();
+                
                 fileSystem.CreateFile("file1.txt", fileSizeInBytes: 1, processId);
 
                 fileSystem.WriteFile("file1.txt", processId, dataForFile1);
@@ -67,6 +69,10 @@
                 fileSystem.WriteFile("file2.txt", processId, dataForFile2);
 
                 fileSystem.CloseFile("file2.txt", processId);
+                
+                // fileSystem.DeleteFile("file1.txt", processId);
+                
+                fileSystem.ListFiles();
             }
             else if (processId == 2)
             {
@@ -83,13 +89,15 @@
                 fileSystem.ReadFile("file2.txt", processId);
 
                 fileSystem.CloseFile("file2.txt", processId);
+                
+                fileSystem.DeleteFile("file1.txt", processId);
             }
             else
             {
                 Console.WriteLine("Unexpected process Id.");
             }
 
-            fileSystem.DisplayVCBBitMap();
+            // fileSystem.DisplayVCBBitMap();
 
             Console.WriteLine($"Thread {processId} completed.\n");
         }
